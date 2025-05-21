@@ -1,7 +1,9 @@
+
 'use client';
 
 import * as React from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -29,7 +31,7 @@ function SubmitButton() {
 
 export function AddTunnelDialog() {
   const [open, setOpen] = React.useState(false);
-  const [state, formAction] = useFormState(addTunnelAction, { message: '', errors: {} });
+  const [state, formAction] = useActionState(addTunnelAction, { message: '', errors: {} });
   const { toast } = useToast();
   const formRef = React.useRef<HTMLFormElement>(null);
 

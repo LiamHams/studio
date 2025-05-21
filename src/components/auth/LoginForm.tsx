@@ -1,8 +1,10 @@
+
 'use client';
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { attemptLogin } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +24,7 @@ function SubmitButton() {
 
 export function LoginForm() {
   const router = useRouter();
-  const [state, formAction] = useFormState(attemptLogin, undefined);
+  const [state, formAction] = useActionState(attemptLogin, undefined);
   const [showPassword, setShowPassword] = React.useState(false);
 
   React.useEffect(() => {
