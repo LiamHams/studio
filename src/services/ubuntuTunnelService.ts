@@ -1,5 +1,4 @@
 
-'use server';
 /**
  * @fileOverview Service for managing network tunnels on an Ubuntu system.
  * This service simulates the execution of system commands.
