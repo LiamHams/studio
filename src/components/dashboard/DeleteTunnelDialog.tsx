@@ -50,7 +50,7 @@ export function DeleteTunnelDialog({ tunnel, children }: DeleteTunnelDialogProps
   const triggerWithHandler = React.Children.map(children, child => {
     if (React.isValidElement(child)) {
       return React.cloneElement(child as React.ReactElement<any>, {
-        onClick: ()_ => setOpen(true),
+        onClick: () => setOpen(true),
       });
     }
     return child;
