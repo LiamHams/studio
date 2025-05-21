@@ -7,7 +7,7 @@ const AUTH_COOKIE_NAME = 'tunnelvision_auth';
 const HARDCODED_USER = 'admin';
 const HARDCODED_PASS = 'password'; // In a real app, use hashed passwords and a database
 
-export async function attemptLogin(formData: FormData): Promise<{ success: boolean; error?: string }> {
+export async function attemptLogin(prevState: any, formData: FormData): Promise<{ success: boolean; error?: string }> {
   const username = formData.get('username');
   const password = formData.get('password');
 
@@ -34,13 +34,13 @@ export async function logoutUser(): Promise<void> {
   redirect('/login');
 }
 
-export function isAuthenticated(): boolean {
+export async function isAuthenticated(): Promise<boolean> {
   const cookieStore = cookies();
   return !!cookieStore.get(AUTH_COOKIE_NAME)?.value;
 }
 
 export async function protectedRoute(): Promise<void> {
-  if (!isAuthenticated()) {
+  if (!await isAuthenticated()) {
     redirect('/login');
   }
 }
