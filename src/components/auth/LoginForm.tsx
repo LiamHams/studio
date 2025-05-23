@@ -3,7 +3,8 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { useActionState } from 'react';
+import { ReactNode, useEffect } from 'react'; // Corrected import for ReactNode, useEffect
+import { useActionState } from 'react'; // Keep if React.useActionState is used elsewhere, or specify React.useActionState
 import { useFormStatus } from 'react-dom';
 import { attemptLogin } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -24,13 +25,13 @@ function SubmitButton() {
 
 export function LoginForm() {
   const router = useRouter();
-  const [state, formAction] = useActionState(attemptLogin, undefined);
+  const [state, formAction] = React.useActionState(attemptLogin, undefined);
   const [showPassword, setShowPassword] = React.useState(false);
 
   React.useEffect(() => {
     if (state?.success) {
       router.push('/dashboard');
-      router.refresh(); // Ensure fresh data load on dashboard
+      // router.refresh(); // Ensure fresh data load on dashboard - Temporarily removed to debug redirect loop
     }
   }, [state, router]);
 
