@@ -2,8 +2,6 @@
 /**
  * @fileOverview Service for managing network tunnels on an Ubuntu system.
  * This service simulates the execution of system commands.
- * In a real application, this is where you'd use child_process.exec
- * or a similar mechanism to interact with the OS, with extreme care for security.
  */
 import type { Tunnel, TunnelCreationData, TunnelUpdateData } from '@/types';
 
@@ -11,39 +9,56 @@ import type { Tunnel, TunnelCreationData, TunnelUpdateData } from '@/types';
 let tunnelsState: Tunnel[] = [
   {
     id: '1',
-    name: 'Initial Mock IPv6',
-    type: 'ipv6',
-    localIp: '2001:db8:abcd:0001::1',
-    remoteIp: '2001:db8:abcd:0002::1',
-    interfaceName: 'sim-ipv6-0',
+    name: 'Initial Mock IPIP6',
+    type: 'ipip6',
+    localIp: '2001:db8:a::1', // IPv6
+    remoteIp: '2001:db8:a::2', // IPv6
+    assignedIp: 'fd00:1::1/64',
+    mtu: 1460,
+    interfaceName: 'sim-ipip6-0',
     status: 'active',
   },
   {
     id: '2',
     name: 'Initial Mock 6to4',
     type: '6to4',
-    localIp: '192.0.2.10',
+    localIp: '192.0.2.10', // IPv4
+    remoteIp: '198.51.100.1', // IPv4, example public 6to4 relay
+    assignedIp: '2002:c000:020a::1/48', // Derived 6to4 prefix + host
+    mtu: 1480,
     interfaceName: 'sim-6to4-0',
     status: 'inactive',
   },
 ];
 
 // Helper to simulate command execution
-async function executeSimulatedCommand(command: string): Promise<{ success: boolean; message: string }> {
-  console.log(`[UbuntuTunnelService] WOULD EXECUTE: ${command}`);
-  // Simulate some delay
-  await new Promise(resolve => setTimeout(resolve, 100 + Math.random() * 200));
-  // Simulate potential failure
+async function executeSimulatedCommand(command: string, logOnly: boolean = false): Promise<{ success: boolean; message: string }> {
+  console.log(`[UbuntuTunnelService] ${logOnly ? 'INFO' : 'WOULD EXECUTE'}: ${command}`);
+  if (logOnly) return { success: true, message: `Logged: ${command}`};
+
+  await new Promise(resolve => setTimeout(resolve, 50 + Math.random() * 100));
   if (command.includes("error_test")) {
     return { success: false, message: `Simulated error executing: ${command}` };
   }
   return { success: true, message: `Simulated success for: ${command}` };
 }
 
+async function applyNetplanChanges(): Promise<{ success: boolean; message: string }> {
+  // In a real system, you might run `sudo netplan apply` or interact with netplan configurations.
+  // For simulation, we just log it. It's often not needed for `ip tunnel` commands if they are applied directly.
+  // However, persistent configuration would involve netplan or ifupdown.
+  return executeSimulatedCommand("sudo netplan apply (simulated, if needed for persistence)", true);
+}
+
+function getIpCommand(assignedIp: string): string {
+  // Check if assignedIp is IPv6 to use `ip -6`
+  // This is a simple check, a robust one would parse the IP properly
+  return assignedIp.includes(':') ? 'ip -6' : 'ip';
+}
+
 export const ubuntuTunnelService = {
   async getTunnels(): Promise<Tunnel[]> {
     console.log('[UbuntuTunnelService] Fetching tunnels (simulated)');
-    // In a real scenario, this would parse 'ip tunnel show', netplan configs, etc.
     await new Promise(resolve => setTimeout(resolve, 50));
     return JSON.parse(JSON.stringify(tunnelsState));
   },
@@ -56,24 +71,48 @@ export const ubuntuTunnelService = {
 
   async addTunnel(data: TunnelCreationData): Promise<Tunnel> {
     console.log('[UbuntuTunnelService] Adding new tunnel (simulated):', data);
-    // Example: Formulate netplan config or ip tunnel commands
-    let command = "";
-    if (data.type === '6to4') {
-      command = `sudo ip tunnel add ${data.interfaceName} mode sit local ${data.localIp} ttl 64`;
-      // Plus ip addr add, ip link set up, ip route add...
-    } else if (data.type === 'ipv6') {
-      command = `sudo ip tunnel add ${data.interfaceName} mode ip6tnl local ${data.localIp} remote ${data.remoteIp} encaplimit none`;
-      // Plus ip addr add, ip link set up, ip route add...
+    
+    const commands: string[] = [];
+    let tunnelCommand = "";
+
+    switch (data.type) {
+      case '6to4':
+        tunnelCommand = `sudo ip tunnel add ${data.interfaceName} mode sit local ${data.localIp} remote ${data.remoteIp} ttl 64`;
+        break;
+      case 'ipip6':
+        tunnelCommand = `sudo ip -6 tunnel add ${data.interfaceName} mode ipip6 local ${data.localIp} remote ${data.remoteIp} encaplimit none`;
+        break;
+      case 'gre6':
+        tunnelCommand = `sudo ip -6 tunnel add ${data.interfaceName} mode ip6gre local ${data.localIp} remote ${data.remoteIp} encaplimit none`;
+        break;
+      default:
+        throw new Error(`Unsupported tunnel type: ${data.type}`);
     }
-    const result = await executeSimulatedCommand(`${command} && sudo netplan apply`);
-    if (!result.success) {
-      throw new Error(`Failed to add tunnel: ${result.message}`);
+    commands.push(tunnelCommand);
+
+    const ipCmd = getIpCommand(data.assignedIp);
+    commands.push(`sudo ${ipCmd} addr add ${data.assignedIp} dev ${data.interfaceName}`);
+
+    if (data.mtu) {
+      commands.push(`sudo ip link set ${data.interfaceName} mtu ${data.mtu}`);
     }
+    commands.push(`sudo ip link set ${data.interfaceName} up`);
+
+    for (const cmd of commands) {
+      const result = await executeSimulatedCommand(cmd);
+      if (!result.success) {
+        // Attempt to clean up if a command fails mid-sequence (e.g., delete tunnel if add failed)
+        await executeSimulatedCommand(`sudo ip tunnel del ${data.interfaceName}`, true); // Log cleanup attempt
+        throw new Error(`Failed to execute command "${cmd}": ${result.message}`);
+      }
+    }
+    
+    // await applyNetplanChanges(); // If managing via netplan for persistence
 
     const newTunnel: Tunnel = {
       ...data,
       id: Date.now().toString(),
-      status: 'inactive', // New tunnels are inactive until explicitly activated
+      status: 'active', // New tunnels are active after 'ip link set up'
     };
     tunnelsState.push(newTunnel);
     console.log(`[UbuntuTunnelService] Tunnel ${newTunnel.id} added to simulated state.`);
@@ -88,25 +127,83 @@ export const ubuntuTunnelService = {
       return null;
     }
 
-    // Simulate removing old config and adding new one
     const oldTunnel = tunnelsState[tunnelIndex];
-    const removeCommand = `sudo ip tunnel del ${oldTunnel.interfaceName}`;
-    await executeSimulatedCommand(removeCommand);
+    
+    // Delete old tunnel interface
+    const deleteCmd = `sudo ip tunnel del ${oldTunnel.interfaceName}`;
+    const deleteResult = await executeSimulatedCommand(deleteCmd);
+    // We proceed even if delete fails, as the interface might not exist or another issue.
+    if (!deleteResult.success) {
+      console.warn(`[UbuntuTunnelService] Could not delete old tunnel ${oldTunnel.interfaceName} during update: ${deleteResult.message}. Proceeding with add.`);
+    }
 
-    let addCommand = "";
-    const updatedData = { ...oldTunnel, ...data };
-    if (updatedData.type === '6to4') {
-      addCommand = `sudo ip tunnel add ${updatedData.interfaceName} mode sit local ${updatedData.localIp} ttl 64`;
-    } else if (updatedData.type === 'ipv6') {
-      addCommand = `sudo ip tunnel add ${updatedData.interfaceName} mode ip6tnl local ${updatedData.localIp} remote ${updatedData.remoteIp} encaplimit none`;
+    // Create new tunnel with updated data
+    // Merge old data with new data, ensuring all required fields for creation are present
+    const creationData: TunnelCreationData = {
+      name: data.name || oldTunnel.name,
+      type: data.type || oldTunnel.type,
+      localIp: data.localIp || oldTunnel.localIp,
+      remoteIp: data.remoteIp || oldTunnel.remoteIp,
+      assignedIp: data.assignedIp || oldTunnel.assignedIp,
+      mtu: data.mtu === undefined ? oldTunnel.mtu : data.mtu, // Handle explicit undefined for removal or take new/old
+      interfaceName: data.interfaceName || oldTunnel.interfaceName, // Usually interface name shouldn't change, but if it does...
+    };
+
+    // If interface name changes, ensure old one is targeted for delete.
+    // If interface name doesn't change, the previous delete was correct.
+    // If it *did* change, the `deleteCmd` above used the *old* interface name, which is correct.
+
+    const commands: string[] = [];
+    let tunnelCommand = "";
+
+    switch (creationData.type) {
+      case '6to4':
+        tunnelCommand = `sudo ip tunnel add ${creationData.interfaceName} mode sit local ${creationData.localIp} remote ${creationData.remoteIp} ttl 64`;
+        break;
+      case 'ipip6':
+        tunnelCommand = `sudo ip -6 tunnel add ${creationData.interfaceName} mode ipip6 local ${creationData.localIp} remote ${creationData.remoteIp} encaplimit none`;
+        break;
+      case 'gre6':
+        tunnelCommand = `sudo ip -6 tunnel add ${creationData.interfaceName} mode ip6gre local ${creationData.localIp} remote ${creationData.remoteIp} encaplimit none`;
+        break;
+      default:
+        throw new Error(`Unsupported tunnel type: ${creationData.type}`);
     }
+    commands.push(tunnelCommand);
+
+    const ipCmd = getIpCommand(creationData.assignedIp);
+    commands.push(`sudo ${ipCmd} addr add ${creationData.assignedIp} dev ${creationData.interfaceName}`);
     
-    const result = await executeSimulatedCommand(`${addCommand} && sudo netplan apply`);
-    if (!result.success) {
-      throw new Error(`Failed to update tunnel: ${result.message}`);
+    if (creationData.mtu) {
+      commands.push(`sudo ip link set ${creationData.interfaceName} mtu ${creationData.mtu}`);
     }
-    
-    tunnelsState[tunnelIndex] = { ...tunnelsState[tunnelIndex], ...data, status: tunnelsState[tunnelIndex].status }; // Keep existing status or update explicitly
+    // Re-apply the 'up' state based on the old tunnel's status, or default to 'up' if status was part of update.
+    const desiredLinkState = oldTunnel.status === 'active' ? 'up' : 'down';
+    commands.push(`sudo ip link set ${creationData.interfaceName} ${desiredLinkState}`);
+
+
+    for (const cmd of commands) {
+      const result = await executeSimulatedCommand(cmd);
+      if (!result.success) {
+        throw new Error(`Failed to execute command "${cmd}" during update: ${result.message}`);
+      }
+    }
+
+    // await applyNetplanChanges();
+
+    tunnelsState[tunnelIndex] = { 
+        ...oldTunnel, // keep original ID and potentially status (if not re-upping)
+        ...creationData, // apply all validated and merged data
+        status: oldTunnel.status, // Preserve original status unless explicitly changed by setTunnelStatus
+                                 // Or, if 'up' command implies active, then 'active'
+    };
+     if (commands.some(cmd => cmd.includes(`ip link set ${creationData.interfaceName} up`))) {
+        tunnelsState[tunnelIndex].status = 'active';
+    } else if (commands.some(cmd => cmd.includes(`ip link set ${creationData.interfaceName} down`))) {
+        tunnelsState[tunnelIndex].status = 'inactive';
+    }
+
+
     console.log(`[UbuntuTunnelService] Tunnel ${id} updated in simulated state.`);
     return JSON.parse(JSON.stringify(tunnelsState[tunnelIndex]));
   },
@@ -119,18 +216,19 @@ export const ubuntuTunnelService = {
       return false;
     }
     const tunnelToDelete = tunnelsState[tunnelIndex];
-    const command = `sudo ip tunnel del ${tunnelToDelete.interfaceName} && sudo netplan apply`;
+    const command = `sudo ip tunnel del ${tunnelToDelete.interfaceName}`;
     
     const result = await executeSimulatedCommand(command);
+    // await applyNetplanChanges(); // If managing via netplan for persistence
+
     if (!result.success) {
-      // Decide if this should throw or return false based on desired behavior
-      console.error(`[UbuntuTunnelService] Failed to execute delete command for tunnel ${id}: ${result.message}`);
-      // Even if command fails, we remove from our mock state for simulation
+      // Log error but still remove from mock state for simulation consistency.
+      console.error(`[UbuntuTunnelService] Failed to execute delete command for tunnel ${id}: ${result.message}. Removing from state anyway.`);
     }
 
     tunnelsState = tunnelsState.filter(t => t.id !== id);
     console.log(`[UbuntuTunnelService] Tunnel ${id} removed from simulated state.`);
-    return true;
+    return true; // Return true if found and attempt was made, even if OS command failed in sim
   },
 
   async setTunnelStatus(id: string, status: 'active' | 'inactive'): Promise<boolean> {
@@ -144,10 +242,13 @@ export const ubuntuTunnelService = {
       ? `sudo ip link set dev ${tunnel.interfaceName} up` 
       : `sudo ip link set dev ${tunnel.interfaceName} down`;
 
-    const result = await executeSimulatedCommand(`${command} && sudo netplan apply`);
+    const result = await executeSimulatedCommand(command);
     if (!result.success) {
-      throw new Error(`Failed to set tunnel status: ${result.message}`);
+      // Should we set status to 'error' here? Or let it throw?
+      // For now, let it throw so the action can report a detailed error.
+      throw new Error(`Failed to set tunnel status for ${tunnel.interfaceName}: ${result.message}`);
     }
+    // await applyNetplanChanges(); // If needed
 
     tunnel.status = status;
     console.log(`[UbuntuTunnelService] Tunnel ${id} status updated to ${status} in simulated state.`);

@@ -6,32 +6,48 @@ import { ubuntuTunnelService } from '@/services/ubuntuTunnelService';
 import type { Tunnel, TunnelCreationData, TunnelUpdateData } from '@/types';
 import { z } from 'zod';
 
+// Regex for basic IP/CIDR format validation. Doesn't validate IP correctness itself deeply.
+const ipWithCidrRegex = /^([0-9]{1,3}\.){3}[0-9]{1,3}\/(0|[1-9]|[12][0-9]|3[0-2])$|^([0-9a-fA-F:]+)\/(0|[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/;
+
+
 const tunnelSchemaBase = z.object({
   name: z.string().min(3, "Name must be at least 3 characters long."),
-  type: z.enum(['6to4', 'ipv6']),
-  localIp: z.string().ip({ message: "Invalid Local IP address." }),
-  remoteIp: z.string().ip({ message: "Invalid Remote IP address." }).optional().or(z.literal('')),
+  type: z.enum(['6to4', 'ipip6', 'gre6'], { required_error: "Tunnel type is required." }),
+  localIp: z.string().min(1, "Local IP is required."), // General IP validation, refined below
+  remoteIp: z.string().min(1, "Remote IP is required."), // General IP validation, refined below
+  assignedIp: z.string().regex(ipWithCidrRegex, { message: "Invalid Assigned IP/CIDR format (e.g., 10.0.0.1/24 or fd00::1/64)." }),
+  mtu: z.preprocess(
+    (val) => (val === '' || val === undefined || val === null) ? undefined : parseInt(String(val), 10),
+    z.number().int().min(68).max(65535).optional()
+  ),
   interfaceName: z.string().min(1, "Interface name is required.").regex(/^[a-zA-Z0-9_-]+$/, "Interface name can only contain letters, numbers, underscore, and hyphen."),
 });
 
-const tunnelSchema = tunnelSchemaBase.refine(data => {
-  if (data.type === 'ipv6' && (!data.remoteIp || data.remoteIp.trim() === '')) {
-    return false;
+const tunnelSchema = tunnelSchemaBase.superRefine((data, ctx) => {
+  // Validate endpoint IPs based on tunnel type
+  if (data.type === '6to4') {
+    if (!z.string().ip({ version: "v4", message: "Local IP must be a valid IPv4 address for 6to4 tunnels." }).safeParse(data.localIp).success) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Local IP must be a valid IPv4 address for 6to4 tunnels.", path: ["localIp"] });
+    }
+    if (!z.string().ip({ version: "v4", message: "Remote IP must be a valid IPv4 address for 6to4 tunnels." }).safeParse(data.remoteIp).success) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Remote IP must be a valid IPv4 address for 6to4 tunnels.", path: ["remoteIp"] });
+    }
+  } else if (data.type === 'ipip6' || data.type === 'gre6') {
+    if (!z.string().ip({ version: "v6", message: "Local IP must be a valid IPv6 address for ipip6/gre6 tunnels." }).safeParse(data.localIp).success) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Local IP must be a valid IPv6 address for ipip6/gre6 tunnels.", path: ["localIp"] });
+    }
+    if (!z.string().ip({ version: "v6", message: "Remote IP must be a valid IPv6 address for ipip6/gre6 tunnels." }).safeParse(data.remoteIp).success) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Remote IP must be a valid IPv6 address for ipip6/gre6 tunnels.", path: ["remoteIp"] });
+    }
   }
-  return true;
-}, {
-  message: "Remote IP is required for IPv6 tunnels.",
-  path: ["remoteIp"],
 });
 
 
 export async function getTunnelsAction(): Promise<Tunnel[]> {
-  // return mockDb.getTunnels(); // Old
   return ubuntuTunnelService.getTunnels();
 }
 
 export async function getTunnelByIdAction(id: string): Promise<Tunnel | undefined> {
-  // return mockDb.getTunnelById(id); // Old
   return ubuntuTunnelService.getTunnelById(id);
 }
 
@@ -46,15 +62,9 @@ export async function addTunnelAction(prevState: any, formData: FormData) {
     };
   }
   
-  let data = validatedFields.data as TunnelCreationData;
-  // Ensure remoteIp is undefined if it's an empty string and type is 6to4
-  if (data.type === '6to4' && data.remoteIp === '') {
-    data = { ...data, remoteIp: undefined };
-  }
-
+  const data = validatedFields.data as TunnelCreationData;
 
   try {
-    // await mockDb.addTunnel(data); // Old
     await ubuntuTunnelService.addTunnel(data);
     revalidatePath('/dashboard');
     return { message: 'Tunnel added successfully.', errors: {} };
@@ -77,14 +87,9 @@ export async function updateTunnelAction(id: string, prevState: any, formData: F
     };
   }
 
-  let data = validatedFields.data as TunnelUpdateData;
-   if (data.type === '6to4' && data.remoteIp === '') {
-    data = { ...data, remoteIp: undefined };
-  }
-
+  const data = validatedFields.data as TunnelUpdateData;
 
   try {
-    // const updatedTunnel = await mockDb.updateTunnel(id, data); // Old
     const updatedTunnel = await ubuntuTunnelService.updateTunnel(id, data);
     if (!updatedTunnel) {
       return { message: 'Tunnel not found or failed to update.', errors: {} };
@@ -100,11 +105,10 @@ export async function updateTunnelAction(id: string, prevState: any, formData: F
 export async function deleteTunnelAction(id: string): Promise<{ success: boolean; message?: string }> {
   if (!id) return { success: false, message: 'Tunnel ID is missing.' };
   try {
-    // const success = await mockDb.deleteTunnel(id); // Old
     const success = await ubuntuTunnelService.deleteTunnel(id);
     if (success) {
       revalidatePath('/dashboard');
-      return { success: true, message: 'Tunnel deletion process initiated.' }; // Changed message to reflect simulation
+      return { success: true, message: 'Tunnel deletion process initiated.' };
     }
     return { success: false, message: 'Tunnel not found or failed to delete.' };
   } catch (error) {
@@ -116,8 +120,6 @@ export async function deleteTunnelAction(id: string): Promise<{ success: boolean
 export async function toggleTunnelStatusAction(id: string, currentStatus: 'active' | 'inactive' | 'error'): Promise<{ success: boolean; message?: string; newStatus?: 'active' | 'inactive' }> {
   if (!id) return { success: false, message: 'Tunnel ID is missing.' };
   
-  // For 'error' status, we might want to try to activate it.
-  // Or, if it's active/inactive, we toggle.
   const targetStatus = (currentStatus === 'active') ? 'inactive' : 'active';
 
   try {

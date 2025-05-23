@@ -1,6 +1,7 @@
+
 'use client';
 
-import type * as React from 'react';
+import * as React from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,7 +14,8 @@ interface TunnelFormFieldsProps {
 }
 
 export function TunnelFormFields({ defaultValues, errors, isPending }: TunnelFormFieldsProps) {
-  const [tunnelType, setTunnelType] = React.useState(defaultValues?.type || 'ipv6');
+  // No need to manage tunnelType in state here if not affecting other fields dynamically beyond what CSS/validation handles
+  // const [tunnelType, setTunnelType] = React.useState(defaultValues?.type || 'ipip6');
 
   return (
     <div className="space-y-4">
@@ -23,7 +25,7 @@ export function TunnelFormFields({ defaultValues, errors, isPending }: TunnelFor
           id="name" 
           name="name" 
           defaultValue={defaultValues?.name} 
-          placeholder="e.g., My Home IPv6" 
+          placeholder="e.g., My Home Tunnel" 
           required 
           disabled={isPending}
         />
@@ -33,8 +35,8 @@ export function TunnelFormFields({ defaultValues, errors, isPending }: TunnelFor
         <Label htmlFor="type">Tunnel Type</Label>
         <Select 
           name="type" 
-          defaultValue={defaultValues?.type || 'ipv6'} 
-          onValueChange={(value: '6to4' | 'ipv6') => setTunnelType(value)}
+          defaultValue={defaultValues?.type || 'ipip6'} 
+          // onValueChange={(value: Tunnel['type']) => setTunnelType(value)} // Not strictly needed if form re-renders on type change
           required
           disabled={isPending}
         >
@@ -42,14 +44,15 @@ export function TunnelFormFields({ defaultValues, errors, isPending }: TunnelFor
             <SelectValue placeholder="Select tunnel type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ipv6">IPv6 Tunnel</SelectItem>
+            <SelectItem value="ipip6">IPv6-in-IPv6 Tunnel (ipip6)</SelectItem>
             <SelectItem value="6to4">6to4 Tunnel</SelectItem>
+            <SelectItem value="gre6">GRE-over-IPv6 Tunnel (gre6)</SelectItem>
           </SelectContent>
         </Select>
         {errors?.type && <p className="text-sm text-destructive mt-1">{errors.type[0]}</p>}
       </div>
       <div>
-        <Label htmlFor="localIp">Local IP Address</Label>
+        <Label htmlFor="localIp">Local Endpoint IP</Label>
         <Input 
           id="localIp" 
           name="localIp" 
@@ -61,20 +64,49 @@ export function TunnelFormFields({ defaultValues, errors, isPending }: TunnelFor
         />
         {errors?.localIp && <p className="text-sm text-destructive mt-1">{errors.localIp[0]}</p>}
       </div>
-      {tunnelType === 'ipv6' && (
-        <div>
-          <Label htmlFor="remoteIp">Remote IP Address (for IPv6)</Label>
-          <Input
-            id="remoteIp"
-            name="remoteIp"
-            defaultValue={defaultValues?.remoteIp}
-            placeholder="e.g., 2001:db8::2"
-            disabled={isPending}
-            className="font-mono"
-          />
-          {errors?.remoteIp && <p className="text-sm text-destructive mt-1">{errors.remoteIp[0]}</p>}
-        </div>
-      )}
+      
+      <div>
+        <Label htmlFor="remoteIp">Remote Endpoint IP</Label>
+        <Input
+          id="remoteIp"
+          name="remoteIp"
+          defaultValue={defaultValues?.remoteIp}
+          placeholder="e.g., 203.0.113.1 or 2001:db8::2"
+          required
+          disabled={isPending}
+          className="font-mono"
+        />
+        {errors?.remoteIp && <p className="text-sm text-destructive mt-1">{errors.remoteIp[0]}</p>}
+      </div>
+
+      <div>
+        <Label htmlFor="assignedIp">IP Assigned to Tunnel (with CIDR)</Label>
+        <Input 
+          id="assignedIp" 
+          name="assignedIp" 
+          defaultValue={defaultValues?.assignedIp} 
+          placeholder="e.g., 10.0.0.1/24 or fd00::1/64" 
+          required 
+          disabled={isPending}
+          className="font-mono"
+        />
+        {errors?.assignedIp && <p className="text-sm text-destructive mt-1">{errors.assignedIp[0]}</p>}
+      </div>
+
+      <div>
+        <Label htmlFor="mtu">MTU (Maximum Transmission Unit)</Label>
+        <Input 
+          id="mtu" 
+          name="mtu" 
+          type="number"
+          defaultValue={defaultValues?.mtu} 
+          placeholder="e.g., 1480 (optional)" 
+          disabled={isPending}
+          className="font-mono"
+        />
+        {errors?.mtu && <p className="text-sm text-destructive mt-1">{errors.mtu[0]}</p>}
+      </div>
+
       <div>
         <Label htmlFor="interfaceName">Interface Name</Label>
         <Input 
