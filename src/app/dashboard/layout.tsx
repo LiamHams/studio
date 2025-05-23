@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Navbar } from '@/components/shared/Navbar';
-import { protectedRoute } from '@/lib/auth';
+// import { protectedRoute } from '@/lib/auth'; // Removed
 
 export const metadata: Metadata = {
   title: 'Dashboard - TunnelVision',
@@ -12,7 +12,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await protectedRoute(); // Protects this layout and its children
+  // await protectedRoute(); // Removed: Middleware handles protection for /dashboard
 
   return (
     <div className="flex min-h-screen flex-col">
