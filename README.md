@@ -38,8 +38,8 @@ This project includes an `install.sh` script to automate the setup process on a 
 1.  **Clone the Repository:**
     Log into your Ubuntu server via SSH and clone this repository:
     ```bash
-    git clone https://github.com/your-username/your-repo-name.git # <-- Replace with your actual repo URL
-    cd your-repo-name # <-- Replace with your repo's directory name
+    git clone https://github.com/LiamHams/studio.git
+    cd studio
     ```
 
 2.  **Configure the Installation Script:**
