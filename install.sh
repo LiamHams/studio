@@ -88,13 +88,37 @@ print_step "Building Next.js application for production"
 npm run build
 
 print_step "Installing PM2 (Process Manager) globally if not already installed"
+# Source NVM script for the current shell session to make sure npm is in PATH
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
 if ! command -v pm2 &> /dev/null; then
-  sudo npm install pm2 -g
+  echo "PM2 not found, attempting to install globally via npm..."
+  # Execute npm install pm2 -g using the version of node/npm managed by nvm
+  # This ensures sudo uses the nvm-managed npm
+  sudo bash -c "export NVM_DIR=$NVM_DIR && source $NVM_DIR/nvm.sh && npm install pm2 -g"
 else
   echo "PM2 is already installed."
 fi
+
+# Attempt to get PM2 path.
 PM2_PATH=$(which pm2)
+if [ -z "$PM2_PATH" ]; then
+    NVM_BIN_PATH="$NVM_DIR/versions/node/$(nvm current)/bin"
+    if [ -f "$NVM_BIN_PATH/pm2" ]; then
+        PM2_PATH="$NVM_BIN_PATH/pm2"
+        echo "PM2 found at NVM path: $PM2_PATH"
+    else
+        echo "ERROR: PM2 command not found even after attempting install."
+        echo "You might need to open a new terminal or re-login for PATH changes to take effect and run the script again,"
+        echo "or manually ensure PM2 is installed and in the sudo path."
+        exit 1
+    fi
+else
+    echo "PM2 found at: $PM2_PATH"
+fi
 echo "PM2 version: $($PM2_PATH --version)"
+
 
 print_step "Starting application with PM2 (Name: $PM2_APP_NAME, Port: $APP_PORT)"
 # Ensure any existing process with the same name is deleted before starting
@@ -172,3 +196,4 @@ echo "   (e.g., 'source ~/.bashrc' or 'source ~/.zshrc') for NVM changes to take
 echo "------------------------------------------------------------------"
 
 exit 0
+
