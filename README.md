@@ -5,7 +5,7 @@ TunnelVision is a Next.js web application designed to manage network tunnels (sp
 
 ## Features
 
-*   **User Authentication:** Secure login to access the management panel.
+*   **User Authentication:** Secure login to access the management panel. (Default: `admin`/`password`)
 *   **Dashboard:** Overview of all configured tunnels.
 *   **Tunnel Management:**
     *   Add new tunnels (6to4, ipip6, gre6) with specific parameters like local/remote IPs, assigned interface IP (with CIDR), and MTU.
@@ -21,7 +21,7 @@ TunnelVision is a Next.js web application designed to manage network tunnels (sp
 *   TypeScript
 *   Tailwind CSS
 *   ShadCN UI Components
-*   PM2 (for process management on the server)
+*   PM2 (for process management on the server, via `install.sh`)
 
 ## Server Installation (Ubuntu 22 LTS)
 
@@ -31,44 +31,46 @@ This project includes an `install.sh` script to automate the setup process on a 
 
 *   An Ubuntu 22 LTS server.
 *   A user account with `sudo` privileges.
-*   Git and Curl (the script will attempt to install these if not present).
+*   Internet access for downloading packages and cloning the repository.
 
 ### Installation Steps
 
-1.  **Clone the Repository:**
-    Log into your Ubuntu server via SSH and clone this repository:
+1.  **Log into your Ubuntu Server:**
+    Use SSH to connect to your server.
+
+2.  **Clone the Repository:**
     ```bash
     git clone https://github.com/LiamHams/studio.git
     cd studio
     ```
 
-2.  **Configure the Installation Script:**
-    Before running the script, you **MUST** edit it to set your specific configuration:
+3.  **Configure the Installation Script (Optional but Recommended):**
+    The `install.sh` script has some default configurations. You might want to review or change them, especially `APP_PORT`.
     ```bash
     nano install.sh
     ```
-    Inside the script, update the following variables at the top:
-    *   `GITHUB_REPO_URL`: **Crucially, set this to your repository's HTTPS or SSH clone URL.** The script uses this to clone the project into a specified directory.
-    *   `APP_CLONE_DIR`: The directory name where the project will be cloned (e.g., "tunnelvision-app").
-    *   `PM2_APP_NAME`: The name for your application in PM2 (e.g., "tunnelvision").
-    *   `APP_PORT`: The port your Next.js application will run on (e.g., "3000", "8080").
-    *   `NODE_VERSION`: The Node.js LTS version to install via NVM (e.g., "20").
+    Inside the script, you can update these variables at the top if needed:
+    *   `GITHUB_REPO_URL`: Already set to `https://github.com/LiamHams/studio.git`.
+    *   `APP_CLONE_DIR`: Already set to `studio`.
+    *   `PM2_APP_NAME`: Default is "tunnelvision".
+    *   `APP_PORT`: Default is "3000". Change this if you need the app to run on a different port.
+    *   `NODE_VERSION`: Default is "20" (LTS).
 
-3.  **Change Default Credentials (Recommended BEFORE First Run):**
-    The default credentials are `admin` / `password`. For security, change these before deploying or running the install script for the first time (if the script clones a version with these new credentials).
+4.  **Change Default Credentials (Highly Recommended BEFORE First Production Run):**
+    The default credentials are `admin` / `password`. For security, change these before deploying.
     Edit the file `src/lib/auth.ts`:
     ```typescript
     const HARDCODED_USER = 'your_new_admin_username';
     const HARDCODED_PASS = 'your_strong_password';
     ```
-    If you change credentials *after* the `npm run build` step (which `install.sh` performs), you'll need to rebuild (`npm run build`) and restart PM2 (`pm2 restart your-app-name`).
+    If you change credentials *after* the `npm run build` step (which `install.sh` performs), you'll need to rebuild (`npm run build`) and restart PM2 (`pm2 restart your-app-name`). It's best to change them, commit, and push before running the install script on a production server.
 
-4.  **Make the Script Executable:**
+5.  **Make the Script Executable:**
     ```bash
     chmod +x install.sh
     ```
 
-5.  **Run the Installation Script:**
+6.  **Run the Installation Script:**
     ```bash
     ./install.sh
     ```
@@ -77,34 +79,35 @@ This project includes an `install.sh` script to automate the setup process on a 
     *   Install `curl` and `git`.
     *   Install NVM (Node Version Manager).
     *   Install the specified Node.js LTS version and set it as default.
-    *   Clone the project from the `GITHUB_REPO_URL` you configured (if it's not the directory you're already in).
+    *   Navigate into the project directory (it handles being run from inside or outside).
     *   Install project dependencies using `npm install`.
     *   Build the Next.js application for production (`npm run build`).
     *   Install PM2 globally (if not already installed).
     *   Start the application with PM2 using the configured `PM2_APP_NAME` and `APP_PORT`.
     *   Configure PM2 to start on system boot.
     *   Configure UFW (firewall) to allow traffic on `APP_PORT` and SSH.
+    *   Attempt to display the server's IP and the application URL.
 
-6.  **Access Your Application:**
-    Once the script completes, you should be able to access TunnelVision at `http://<your_server_ip>:<APP_PORT>`. Log in with the configured credentials.
+7.  **Access Your Application:**
+    Once the script completes, it will attempt to show you the URL. You should be able to access TunnelVision at `http://<your_server_ip>:<APP_PORT>`. Log in with the configured credentials (default: `admin`/`password`).
 
 ### Managing the Application with PM2
 
 *   List processes: `pm2 list`
-*   View logs: `pm2 logs <PM2_APP_NAME>`
+*   View logs: `pm2 logs <PM2_APP_NAME>` (e.g., `pm2 logs tunnelvision`)
 *   Restart app: `pm2 restart <PM2_APP_NAME>`
 *   Stop app: `pm2 stop <PM2_APP_NAME>`
 
 ## Local Development
 
 1.  **Prerequisites:**
-    *   Node.js (LTS version recommended - e.g., v20.x)
+    *   Node.js (LTS version recommended - e.g., v20.x, same as `NODE_VERSION` in `install.sh`)
     *   npm (comes with Node.js)
 
 2.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/your-username/your-repo-name.git
-    cd your-repo-name
+    git clone https://github.com/LiamHams/studio.git
+    cd studio
     ```
 
 3.  **Install Dependencies:**
@@ -123,10 +126,9 @@ This project includes an `install.sh` script to automate the setup process on a 
 *   **Security - Command Execution:** The `ubuntuTunnelService.ts` file currently **simulates** the execution of Ubuntu commands. To make this application actually manage tunnels on your server, you would need to replace the simulation logic with real command execution (e.g., using Node.js `child_process.exec`). This is a **HIGH-SECURITY RISK** and must be done with extreme caution:
     *   The user running the Next.js application would need appropriate `sudo` permissions, configured carefully via `sudoers` to limit command scope.
     *   All inputs used to construct commands **must** be rigorously sanitized and validated to prevent command injection vulnerabilities.
-*   **Security - Credentials:** The default `admin`/`password` credentials are for demonstration only. **Change them immediately** if deploying to any environment other than a local, isolated test machine. Consider integrating a proper authentication database for a production system.
+*   **Security - Credentials:** The default `admin`/`password` credentials are for demonstration/development only. **Change them immediately** by editing `src/lib/auth.ts`, rebuilding, and restarting the app if deploying to any environment other than a local, isolated test machine. Consider integrating a proper authentication database for a production system.
 *   **Error Handling:** The application includes basic error handling, but further enhancements may be needed for a production environment.
 
 ## Contributing
 
 Contributions are welcome! Please feel free to open an issue or submit a pull request.
-```
